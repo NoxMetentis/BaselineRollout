@@ -1,4 +1,6 @@
+// src/lib/readiness.ts
 import type { BrowserMajors } from "./baseline";
+import { resolveRequiredMajors } from "./baseline";
 
 export type TrafficRow = {
   browser: "chrome" | "firefox" | "safari" | "edge";
@@ -24,8 +26,8 @@ export type ReadinessResult = {
 };
 
 /**
- * TEMPORARY: stub minimal majors for feasibility.
- * Replace with Baseline/BCD-backed values later.
+ * Curated stub minimal majors for determinism in demos.
+ * We PREFER BCD but fall back to these where BCD is ambiguous/missing.
  */
 export const REQUIRED_MIN: Record<string, BrowserMajors> = {
   // MVP mapped features
@@ -43,7 +45,14 @@ export function computeReadiness(
   traffic: TrafficRow[],
   threshold = 0.95
 ): ReadinessResult {
-  const required = REQUIRED_MIN[featureId] ?? {};
+  // Prefer BCD-derived majors; fall back to curated stubs for determinism
+  const requiredFromBCD = resolveRequiredMajors(featureId);
+  const required: BrowserMajors = {
+    ...REQUIRED_MIN[featureId], // curated defaults
+    ...requiredFromBCD,         // overwrite with BCD where available
+  };
+
+  // Normalize traffic to sum=1.0
   const total = traffic.reduce((acc, r) => acc + r.share, 0);
   const rows = total > 0 ? traffic.map(r => ({ ...r, share: r.share / total })) : [];
 

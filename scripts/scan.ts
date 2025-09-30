@@ -1,10 +1,12 @@
+// scripts/scan.ts
 import fg from "fast-glob";
 import fs from "node:fs";
 import path from "node:path";
 import { parseTrafficCSV } from "../src/lib/traffic";
-import { computeReadiness, REQUIRED_MIN } from "../src/lib/readiness";
+import { computeReadiness } from "../src/lib/readiness";
 import { detectCss, isCssPath } from "../src/lib/detect-css";
 import { detectJs, isJsPath } from "../src/lib/detect-js";
+import { FEATURE_TO_BCD } from "../src/lib/feature-map";
 
 const args = process.argv.slice(2);
 function arg(key: string, def?: string) {
@@ -64,10 +66,10 @@ ${parsed.issues?.length ? `**Traffic notes:**\n${parsed.issues.map(x => `- ${x}`
     }
   }
 
-  // 4) Partition: mapped vs ignored (no version map yet)
+  // 4) Partition: mapped vs ignored, using our BCD feature map
   const idsAll = Array.from(found).sort();
-  const ids = idsAll.filter((id) => REQUIRED_MIN[id as keyof typeof REQUIRED_MIN]);
-  const ignored = idsAll.filter((id) => !REQUIRED_MIN[id as keyof typeof REQUIRED_MIN]);
+  const ids = idsAll.filter((id) => Boolean((FEATURE_TO_BCD as any)[id]));
+  const ignored = idsAll.filter((id) => !Boolean((FEATURE_TO_BCD as any)[id]));
 
   // If nothing detected at all
   if (idsAll.length === 0) {
@@ -94,7 +96,7 @@ ${parsed.issues?.length ? `\n**Traffic notes:**\n${parsed.issues.map(x => `- ${x
 Detected features in this PR, but none are mapped yet for gating:
 ${idsAll.map(id => `- \`${id}\``).join("\n")}
 
-> ℹ️ Ignored (no version map): ${idsAll.map(id => `\`${id}\``).join(", ")}
+> ℹ️ Ignored (no BCD map): ${idsAll.map(id => `\`${id}\``).join(", ")}
 
 - Policy threshold: **${(threshold * 100).toFixed(0)}%**
 - Traffic file: \`${trafficFile}\`
@@ -178,7 +180,7 @@ ${tip}
 Detected features (mapped for gating):
 ${ids.map(id => `- \`${id}\``).join("\n")}
 
-${ignored.length ? `Ignored (no version map): ${ignored.map(id => `\`${id}\``).join(", ")}` : ""}
+${ignored.length ? `Ignored (no BCD map): ${ignored.map(id => `\`${id}\``).join(", ")}` : ""}
 
 **Policy threshold:** ${(threshold * 100).toFixed(0)}%  
 **Traffic file:** \`${trafficFile}\`  

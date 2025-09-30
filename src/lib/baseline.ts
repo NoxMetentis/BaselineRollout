@@ -1,14 +1,17 @@
 // src/lib/baseline.ts
 import { features } from "web-features";
+import { getRequiredMajorsFromBCD } from "./bcd";
 
-export type BrowserMajors = Partial<Record<"chrome" | "firefox" | "safari" | "edge", number>>;
+/** Browsers we target for MVP */
+export type BrowserKey = "chrome" | "firefox" | "safari" | "edge";
+export type BrowserMajors = Partial<Record<BrowserKey, number>>;
 
 export type FeatureInfo = {
   id: string;
   title: string;
   mdn?: string;
   baselineStatus?: "low" | "high" | "limited" | "none";
-  required: BrowserMajors; // we'll fill this later once we wire support mapping
+  required: BrowserMajors; // Filled later by resolver (BCD) or left empty.
 };
 
 /**
@@ -16,18 +19,22 @@ export type FeatureInfo = {
  * We access by key instead of calling `.find()`.
  */
 export function getFeatureInfo(id: string): FeatureInfo | null {
-  // TypeScript-friendly access:
   const f = (features as Record<string, any>)[id];
   if (!f) return null;
 
-  // For now, we return the basics we can read directly.
-  // (Per docs, `id` is the key; `name`, `status.baseline`, and `mdn.url` may be present.)
   return {
     id,
     title: f?.name ?? id,
     mdn: f?.mdn?.url,
     baselineStatus: f?.status?.baseline ?? "none",
-    // We'll compute minimal majors in a later step using compat data joins.
     required: {},
   };
+}
+
+/**
+ * Resolve minimal required majors for a given feature using MDN BCD.
+ * This does NOT include curated fallbacks; callers may merge with stubs.
+ */
+export function resolveRequiredMajors(featureId: string): BrowserMajors {
+  return getRequiredMajorsFromBCD(featureId) || {};
 }
