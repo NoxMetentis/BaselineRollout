@@ -1,3 +1,14 @@
-.card { view-transition-name: example; }
-.list:has(a) { color: red; }
-@container (width > 300px) { .box { color: blue; } }
+/* :has() */
+.nav:has(a.active) { color: red; }
+
+/* Container queries (either @container or container-type:) */
+.container { container-type: inline-size; }
+@container (inline-size > 600px) {
+  .card { padding: 16px; }
+}
+
+/* View Transitions (CSS property) */
+.card { view-transition-name: product-card; }
+
+/* color-mix() */
+.btn { color: color-mix(in srgb, red 40%, blue); }
