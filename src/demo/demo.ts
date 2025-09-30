@@ -1,3 +1,9 @@
+// View Transitions API (document.startViewTransition)
 document.startViewTransition(() => {
-  console.log("transition!");
+  // do DOM mutations here
 });
+
+// AbortSignal.timeout with fetch
+const signal = AbortSignal.timeout(800);
+await fetch("/api/data", { signal }).catch(() => {});
+export {};
