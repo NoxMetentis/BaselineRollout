@@ -3,7 +3,12 @@ name: Baseline Readiness
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-
+    
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  
 jobs:
   check:
     runs-on: ubuntu-latest
