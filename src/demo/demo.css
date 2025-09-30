@@ -1,3 +1,6 @@
 .card { view-transition-name: example; }
 .list:has(a) { color: red; }
 @container (width > 300px) { .box { color: blue; } }
+.card { view-transition-name: example; }
+.list:has(a) { color: red; }
+@container (width > 300px) { .box { color: blue; } }

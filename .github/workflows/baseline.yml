@@ -21,9 +21,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
 
       - name: Install deps
         run: npm ci
+
+      # Optional: show the CSV in logs (top 20 lines) to debug parsing issues
+      - name: Show traffic CSV (first 20 lines)
+        run: sed -n '1,20p' src/samples/traffic.sample.csv
 
       - name: Run Baseline scan
         id: scan
@@ -48,7 +53,6 @@ jobs:
             if (fs.existsSync(path)) {
               body = fs.readFileSync(path, 'utf8');
             }
-            // Add/replace a sticky comment by this bot
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -73,16 +77,14 @@ jobs:
               });
             }
 
+      - name: Attach job summary
+        if: ${{ always() }}
+        run: |
+          echo "### Baseline Readiness" >> $GITHUB_STEP_SUMMARY
+          cat baseline-report.md >> $GITHUB_STEP_SUMMARY
+
       - name: Fail if below threshold
         if: ${{ steps.scan.outputs.exit_code != '0' }}
-        run: exit 1
-      - name: Attach job summary
-        if: ${{ always() }}
         run: |
-          echo "### Baseline Readiness" >> $GITHUB_STEP_SUMMARY
-          cat baseline-report.md >> $GITHUB_STEP_SUMMARY
-      - name: Attach job summary
-        if: ${{ always() }}
-        run: |
-          echo "### Baseline Readiness" >> $GITHUB_STEP_SUMMARY
-          cat baseline-report.md >> $GITHUB_STEP_SUMMARY
+          echo "::error title=Baseline gate failed::One or more features are below the policy threshold. See the PR comment and Job Summary for details."
+          exit 1
