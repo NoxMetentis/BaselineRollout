@@ -6,20 +6,35 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "baseline:check": "tsx scripts/quick-baseline-check.ts",
+    "readiness:check": "tsx scripts/quick-readiness.ts",
+     "scan": "tsx scripts/scan.ts -g \"src/**/*.{js,jsx,ts,tsx,css,scss}\" -t src/samples/traffic.sample.csv -th 0.95"
   },
   "dependencies": {
+    "@babel/types": "^7.28.4",
+    "next": "15.5.4",
+    "papaparse": "^5.5.3",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "next": "15.5.4"
+    "semver": "^7.7.2",
+    "web-features": "^3.1.0"
   },
   "devDependencies": {
-    "typescript": "^5",
-    "@types/node": "^20",
+    "@babel/parser": "^7.28.4",
+    "@babel/traverse": "^7.28.4",
+    "@eslint/eslintrc": "^3",
+    "@types/babel__traverse": "^7.28.0",
+    "@types/node": "^20.19.17",
+    "@types/papaparse": "^5.3.16",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.4",
-    "@eslint/eslintrc": "^3"
+    "fast-glob": "^3.3.3",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.20.6",
+    "typescript": "^5",
+    "vitest": "^3.2.4"
   }
 }
