@@ -10,5 +10,8 @@
 /* View Transitions (CSS property) */
 .card { view-transition-name: product-card; }
 
+/* View Transitions (CSS property) */
+.card { view-transition-name: product-card; }
+
 /* color-mix() */
 .btn { color: color-mix(in srgb, red 40%, blue); }
