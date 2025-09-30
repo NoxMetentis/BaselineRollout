@@ -7,12 +7,11 @@
     "build": "next build --turbopack",
     "start": "next start",
     "lint": "eslint",
-    "baseline:check": "tsx scripts/quick-baseline-check.ts",
-    "readiness:check": "tsx scripts/quick-readiness.ts",
-     "scan": "tsx scripts/scan.ts -g \"src/**/*.{js,jsx,ts,tsx,css,scss}\" -t src/samples/traffic.sample.csv -th 0.95"
+    "scan": "tsx scripts/scan.ts -g \"src/**/*.{js,jsx,ts,tsx,css,scss}\" -t src/samples/traffic.sample.csv -th 0.95"
   },
   "dependencies": {
     "@babel/types": "^7.28.4",
+    "@mdn/browser-compat-data": "^7.1.8",
     "next": "15.5.4",
     "papaparse": "^5.5.3",
     "react": "19.1.0",
