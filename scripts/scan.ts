@@ -2,7 +2,7 @@ import fg from "fast-glob";
 import fs from "node:fs";
 import path from "node:path";
 import { parseTrafficCSV } from "../src/lib/traffic";
-import { computeReadiness } from "../src/lib/readiness";
+import { computeReadiness, REQUIRED_MIN } from "../src/lib/readiness";
 import { detectCss, isCssPath } from "../src/lib/detect-css";
 import { detectJs, isJsPath } from "../src/lib/detect-js";
 
@@ -18,15 +18,19 @@ const threshold = Number(arg("-th", "0.95"));
 const outPath = arg("-o", "baseline-report.md")!;
 
 (async function main() {
-  // Load traffic
+  // 1) Load traffic and normalize
   const csv = fs.readFileSync(path.resolve(trafficFile), "utf8");
   const parsed = parseTrafficCSV(csv);
   const traffic = parsed.normalizedRows;
 
-  // Gather files
+  // Traffic snapshot by browser (sum across versions)
+  const browserTotals: Record<string, number> = {};
+  for (const r of traffic) browserTotals[r.browser] = (browserTotals[r.browser] || 0) + r.share;
+
+  // 2) Gather files
   const files = await fg(globs, { dot: false, onlyFiles: true });
 
-  // Detect features
+  // 3) Detect features in files
   const found = new Set<string>();
   for (const file of files) {
     const content = fs.readFileSync(file, "utf8");
@@ -39,58 +43,139 @@ const outPath = arg("-o", "baseline-report.md")!;
     }
   }
 
-  // If none, write a friendly report and exit 0 (no gating needed)
-  if (found.size === 0) {
+  // 4) Partition: mapped vs ignored (no version map yet)
+  const idsAll = Array.from(found).sort();
+  const ids = idsAll.filter((id) => REQUIRED_MIN[id as keyof typeof REQUIRED_MIN]);
+  const ignored = idsAll.filter((id) => !REQUIRED_MIN[id as keyof typeof REQUIRED_MIN]);
+
+  // If nothing detected at all
+  if (idsAll.length === 0) {
     const md = `
 ### Baseline Readiness
 
 _No target features detected in the changed files._
 
-- Threshold: **${(threshold * 100).toFixed(0)}%**
+- Policy threshold: **${(threshold * 100).toFixed(0)}%**
 - Traffic file: \`${trafficFile}\`
-`;
-    fs.writeFileSync(outPath, md.trim() + "\n", "utf8");
+- Traffic snapshot: chrome ${(pct(browserTotals.chrome))}, firefox ${(pct(browserTotals.firefox))}, safari ${(pct(browserTotals.safari))}, edge ${(pct(browserTotals.edge))}
+`.trim();
+    fs.writeFileSync(outPath, md + "\n", "utf8");
     console.log("No target features detected.");
     process.exit(0);
   }
 
-  // Compute readiness per feature
-  const ids = Array.from(found).sort();
-  const results = ids.map((id) => computeReadiness(id, traffic, threshold));
-  const anyFail = results.some((r) => !r.pass);
+  // If none are mapped for gating yet
+  if (ids.length === 0) {
+    const md = `
+### Baseline Readiness
 
-  // Compose Markdown table
-  const rows = results
+Detected features in this PR, but none are mapped yet for gating:
+${idsAll.map(id => `- \`${id}\``).join("\n")}
+
+> ℹ️ Ignored (no version map): ${idsAll.map(id => `\`${id}\``).join(", ")}
+
+- Policy threshold: **${(threshold * 100).toFixed(0)}%**
+- Traffic file: \`${trafficFile}\`
+- Traffic snapshot: chrome ${(pct(browserTotals.chrome))}, firefox ${(pct(browserTotals.firefox))}, safari ${(pct(browserTotals.safari))}, edge ${(pct(browserTotals.edge))}
+`.trim();
+    fs.writeFileSync(outPath, md + "\n", "utf8");
+    console.log("No mapped features to gate. Exiting 0.");
+    process.exit(0);
+  }
+
+  // 5) Compute readiness and build rich details
+  const results = ids.map((id) => computeReadiness(id, traffic, threshold));
+  const failing = results.filter(r => !r.pass).sort((a, b) => a.readiness - b.readiness);
+  const anyFail = failing.length > 0;
+
+  // Top-line summary
+  let summary = `> ✅ All mapped features meet the policy threshold.`;
+  if (anyFail) {
+    const worst = failing[0];
+    const tb = worst.blockedBy[0];
+    const req = (worst.required as any)?.[tb?.browser ?? ""] as number | undefined;
+    summary = `> ❌ **GATED**: \`${worst.featureId}\` readiness ${(worst.readiness * 100).toFixed(1)}% is below policy ${(
+      threshold * 100
+    ).toFixed(0)}%${
+      tb ? ` — main blocker: **${tb.browser}** (~${(tb.missingShare * 100).toFixed(1)}%)${req ? ` < v${req}` : ""}` : ""
+    }.`;
+  }
+
+  // Table rows
+  const tableRows = results
     .map((r) => {
-      const pct = (r.readiness * 100).toFixed(1) + "%";
+      const pctReady = (r.readiness * 100).toFixed(1) + "%";
       const top = r.blockedBy?.[0];
       const blocker = top ? `${top.browser} (~${(top.missingShare * 100).toFixed(1)}%)` : "—";
       const pass = r.pass ? "✅" : "❌";
-      return `| \`${r.featureId}\` | ${pct} | ${(threshold * 100).toFixed(0)}% | ${pass} | ${blocker} |`;
+      return `| \`${r.featureId}\` | ${pctReady} | ${(threshold * 100).toFixed(0)}% | ${pass} | ${blocker} |`;
     })
     .join("\n");
+
+  // Details per feature (browser-level stats + required versions)
+  const detailsBlocks = results.map((r) => {
+    const req = r.required;
+    const reqList = [
+      req.chrome ? `chrome ≥ ${req.chrome}` : null,
+      req.firefox ? `firefox ≥ ${req.firefox}` : null,
+      req.safari ? `safari ≥ ${req.safari}` : null,
+      req.edge ? `edge ≥ ${req.edge}` : null,
+    ].filter(Boolean).join(", ");
+
+    const stats = r.perBrowser.map(b => {
+      return `| ${b.browser} | ${b.required ?? "—"} | ${pct(b.supportedShare)} | ${pct(b.missingShare)} |`;
+    }).join("\n");
+
+    const tip = r.pass
+      ? "_All good for current policy. Consider raising policy later to tighten standards._"
+      : `To pass now, set policy ≤ **${(r.readiness * 100).toFixed(1)}%** or add fallbacks/polyfills for the blocking browser(s).`;
+
+    return `
+<details>
+<summary><strong>\`${r.featureId}\`</strong> — required: ${reqList || "n/a"}</summary>
+
+**Per-browser impact**
+
+| Browser | Required | Supported | Missing |
+|---|---:|---:|---:|
+${stats}
+
+${tip}
+</details>
+`.trim();
+  }).join("\n\n");
 
   const md = `
 ### Baseline Readiness
 
-Detected features in this PR:
-${ids.map((id) => `- \`${id}\``).join("\n")}
+Detected features (mapped for gating):
+${ids.map(id => `- \`${id}\``).join("\n")}
+
+${ignored.length ? `Ignored (no version map): ${ignored.map(id => `\`${id}\``).join(", ")}` : ""}
 
 **Policy threshold:** ${(threshold * 100).toFixed(0)}%  
-**Traffic file:** \`${trafficFile}\`
+**Traffic file:** \`${trafficFile}\`  
+**Traffic snapshot:** chrome ${pct(browserTotals.chrome)}, firefox ${pct(browserTotals.firefox)}, safari ${pct(browserTotals.safari)}, edge ${pct(browserTotals.edge)}
+
+${summary}
 
 | Feature | Readiness | Threshold | Pass | Top blocker |
 |---|---:|---:|:---:|---|
-${rows}
+${tableRows}
 
-${anyFail ? "> ❌ One or more features are below policy threshold." : "> ✅ All detected features meet the policy threshold."}
+${detailsBlocks}
 `.trim();
 
   fs.writeFileSync(outPath, md + "\n", "utf8");
 
-  // Exit nonzero if any fail (so CI can gate)
+  // 6) Exit nonzero if any fail (so CI gates)
   if (anyFail) process.exit(1);
 })().catch((e) => {
   console.error(e);
   process.exit(2);
 });
+
+function pct(n?: number) {
+  if (!n || n <= 0) return "0.0%";
+  return (n * 100).toFixed(1) + "%";
+}
