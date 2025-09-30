@@ -6,11 +6,15 @@ type BrowserKey = "chrome" | "firefox" | "safari" | "edge";
 
 type Result = {
   featureId: string;
-  readiness: number; // 0..1
-  threshold: number; // 0..1
+  readiness: number;
+  threshold: number;
   pass: boolean;
   required: Partial<Record<BrowserKey, number>>;
   blockedBy: Array<{ browser: BrowserKey; missingShare: number }>;
+  // NEW:
+  mdn?: string;
+  baselineStatus?: "low" | "high" | "limited" | "none";
+  baselineBacked?: boolean;
 };
 
 const ALL_FEATURES = [
@@ -255,8 +259,48 @@ export default function Page() {
                 return (
                   <tr key={r.featureId}>
                     <td style={td}>
-                      <code>{r.featureId}</code>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <code>{r.featureId}</code>
+                        {r.mdn && (
+                          <a
+                            href={r.mdn}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ fontSize: 12 }}
+                          >
+                            MDN
+                          </a>
+                        )}
+                        <span
+                          title={
+                            r.baselineBacked
+                              ? "Required versions come from MDN BCD"
+                              : "Using curated fallback for demo determinism"
+                          }
+                          style={{
+                            fontSize: 11,
+                            padding: "2px 6px",
+                            borderRadius: 999,
+                            border: "1px solid",
+                            borderColor: r.baselineBacked ? "#2b6" : "#999",
+                            color: r.baselineBacked ? "#175" : "#555",
+                            background: r.baselineBacked
+                              ? "#eafff4"
+                              : "#f5f5f5",
+                          }}
+                        >
+                          {r.baselineBacked ? "Baseline-backed" : "Stub"}
+                        </span>
+                      </div>
                     </td>
+
                     <td style={td}>{pct}</td>
                     <td style={td}>{Math.round(r.threshold * 100)}%</td>
                     <td style={td}>{projection}</td>

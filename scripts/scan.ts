@@ -7,6 +7,7 @@ import { computeReadiness } from "../src/lib/readiness";
 import { detectCss, isCssPath } from "../src/lib/detect-css";
 import { detectJs, isJsPath } from "../src/lib/detect-js";
 import { FEATURE_TO_BCD } from "../src/lib/feature-map";
+import { getFeatureInfo, resolveRequiredMajors } from "../src/lib/baseline";
 
 const args = process.argv.slice(2);
 function arg(key: string, def?: string) {
@@ -138,37 +139,45 @@ ${parsed.issues?.length ? `\n**Traffic notes:**\n${parsed.issues.map(x => `- ${x
     .join("\n");
 
   // Details per feature (browser-level stats + required versions)
-  const detailsBlocks = results.map((r) => {
-    const req = r.required;
-    const reqList = [
-      req.chrome ? `chrome ≥ ${req.chrome}` : null,
-      req.firefox ? `firefox ≥ ${req.firefox}` : null,
-      req.safari ? `safari ≥ ${req.safari}` : null,
-      req.edge ? `edge ≥ ${req.edge}` : null,
-    ].filter(Boolean).join(", ");
+          const detailsBlocks = results.map((r) => {
+          const info = getFeatureInfo(r.featureId);
+          const bcdMajors = resolveRequiredMajors(r.featureId);
+          const baselineBacked = !!bcdMajors && Object.keys(bcdMajors).length > 0;
 
-    const stats = r.perBrowser.map(b => {
-      return `| ${b.browser} | ${b.required ?? "—"} | ${pct(b.supportedShare)} | ${pct(b.missingShare)} |`;
-    }).join("\n");
+          const req = r.required;
+          const reqList = [
+            req.chrome ? `chrome ≥ ${req.chrome}` : null,
+            req.firefox ? `firefox ≥ ${req.firefox}` : null,
+            req.safari ? `safari ≥ ${req.safari}` : null,
+            req.edge ? `edge ≥ ${req.edge}` : null,
+          ].filter(Boolean).join(", ");
 
-    const tip = r.pass
-      ? "_All good for current policy. Consider raising policy later to tighten standards._"
-      : `To pass now, set policy ≤ **${(r.readiness * 100).toFixed(1)}%** or add fallbacks/polyfills for the blocking browser(s).`;
+          const stats = r.perBrowser.map(b => {
+            return `| ${b.browser} | ${b.required ?? "—"} | ${pct(b.supportedShare)} | ${pct(b.missingShare)} |`;
+          }).join("\n");
 
-    return `
-<details>
-<summary><strong>\`${r.featureId}\`</strong> — required: ${reqList || "n/a"}</summary>
+          const tip = r.pass
+            ? "_All good for current policy. Consider raising policy later to tighten standards._"
+            : `To pass now, set policy ≤ **${(r.readiness * 100).toFixed(1)}%** or add fallbacks/polyfills for the blocking browser(s).`;
 
-**Per-browser impact**
+          const mdnLine = info?.mdn ? ` • [MDN](${info.mdn})` : "";
+          const badge = baselineBacked ? "`Baseline-backed`" : "`Stub`";
 
-| Browser | Required | Supported | Missing |
-|---|---:|---:|---:|
-${stats}
+          return `
+        <details>
+        <summary><strong>\`${r.featureId}\`</strong> — required: ${reqList || "n/a"} • ${badge}${mdnLine}</summary>
 
-${tip}
-</details>
-`.trim();
-  }).join("\n\n");
+        **Per-browser impact**
+
+        | Browser | Required | Supported | Missing |
+        |---|---:|---:|---:|
+        ${stats}
+
+        ${tip}
+        </details>
+        `.trim();
+        }).join("\n\n");
+
 
   const trafficNotes = parsed.issues?.length
     ? `\n**Traffic notes:**\n${parsed.issues.map(x => `- ${x}`).join("\n")}\n`

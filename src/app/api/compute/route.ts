@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { parseTrafficCSV } from "@/lib/traffic";
 import { computeReadiness } from "@/lib/readiness";
+import { getFeatureInfo, resolveRequiredMajors } from "@/lib/baseline";
 
 type Payload = {
   features: string[];
@@ -31,8 +32,20 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: "Provide csv (string) or traffic (array)" }, { status: 400 });
     }
 
-    const results = body.features.map((id) => computeReadiness(id, traffic, threshold));
-    return Response.json({ ok: true, threshold, count: results.length, issues, results });
+    // with:
+        const resultsRaw = body.features.map((id) => computeReadiness(id, traffic, threshold));
+        const results = resultsRaw.map((r) => {
+          const info = getFeatureInfo(r.featureId);
+          const bcdMajors = resolveRequiredMajors(r.featureId);
+          const baselineBacked = !!bcdMajors && Object.keys(bcdMajors).length > 0;
+          return {
+            ...r,
+            mdn: info?.mdn,
+            baselineStatus: info?.baselineStatus ?? "none",
+            baselineBacked,
+          };
+        });
+        return Response.json({ ok: true, threshold, count: results.length, issues, results });
   } catch (err: any) {
     return Response.json({ error: err?.message || "Server error" }, { status: 500 });
   }
