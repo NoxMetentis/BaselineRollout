@@ -1,0 +1,73 @@
+name: Baseline Readiness
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run Baseline scan
+        id: scan
+        shell: bash
+        run: |
+          set +e
+          npx tsx scripts/scan.ts \
+            -g "src/**/*.{js,jsx,ts,tsx,css,scss}" \
+            -t "src/samples/traffic.sample.csv" \
+            -th "0.95" \
+            -o "baseline-report.md"
+          echo "exit_code=$?" >> $GITHUB_OUTPUT
+
+      - name: Post PR comment
+        if: ${{ always() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = 'baseline-report.md';
+            let body = 'Baseline scan did not produce a report.';
+            if (fs.existsSync(path)) {
+              body = fs.readFileSync(path, 'utf8');
+            }
+            // Add/replace a sticky comment by this bot
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const marker = '<!-- baseline-readiness -->';
+            const newBody = marker + "\n" + body;
+            const previous = comments.find(c => c.user.type === 'Bot' && c.body && c.body.includes(marker));
+            if (previous) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: previous.id,
+                body: newBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: newBody,
+              });
+            }
+
+      - name: Fail if below threshold
+        if: ${{ steps.scan.outputs.exit_code != '0' }}
+        run: exit 1
