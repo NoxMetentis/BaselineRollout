@@ -20,12 +20,33 @@ const outPath = arg("-o", "baseline-report.md")!;
 (async function main() {
   // 1) Load traffic and normalize
   const csv = fs.readFileSync(path.resolve(trafficFile), "utf8");
-  const parsed = parseTrafficCSV(csv);
+  const parsed = parseTrafficCSV(csv); // includes .issues
   const traffic = parsed.normalizedRows;
 
   // Traffic snapshot by browser (sum across versions)
   const browserTotals: Record<string, number> = {};
-  for (const r of traffic) browserTotals[r.browser] = (browserTotals[r.browser] || 0) + r.share;
+  for (const r of traffic) {
+    browserTotals[r.browser] = (browserTotals[r.browser] || 0) + r.share;
+  }
+
+  // If no valid traffic rows, write a clear report and fail the gate
+  if (!traffic.length) {
+    const md = `
+### Baseline Readiness
+
+**❗ No valid traffic rows parsed from** \`${trafficFile}\`.
+
+Expected CSV headers: \`browser,version,share\` (shares are 0..1).  
+Accepted browsers (MVP): \`chrome, firefox, safari, edge\`.
+
+${parsed.issues?.length ? `**Traffic notes:**\n${parsed.issues.map(x => `- ${x}`).join("\n")}` : ""}
+
+> ❌ GATED: Cannot compute readiness without valid traffic data.
+`.trim();
+    fs.writeFileSync(outPath, md + "\n", "utf8");
+    console.error("No valid traffic rows parsed; see PR comment for details.");
+    process.exit(1);
+  }
 
   // 2) Gather files
   const files = await fg(globs, { dot: false, onlyFiles: true });
@@ -57,7 +78,8 @@ _No target features detected in the changed files._
 
 - Policy threshold: **${(threshold * 100).toFixed(0)}%**
 - Traffic file: \`${trafficFile}\`
-- Traffic snapshot: chrome ${(pct(browserTotals.chrome))}, firefox ${(pct(browserTotals.firefox))}, safari ${(pct(browserTotals.safari))}, edge ${(pct(browserTotals.edge))}
+- Traffic snapshot: chrome ${pct(browserTotals.chrome)}, firefox ${pct(browserTotals.firefox)}, safari ${pct(browserTotals.safari)}, edge ${pct(browserTotals.edge)}
+${parsed.issues?.length ? `\n**Traffic notes:**\n${parsed.issues.map(x => `- ${x}`).join("\n")}\n` : ""}
 `.trim();
     fs.writeFileSync(outPath, md + "\n", "utf8");
     console.log("No target features detected.");
@@ -76,7 +98,8 @@ ${idsAll.map(id => `- \`${id}\``).join("\n")}
 
 - Policy threshold: **${(threshold * 100).toFixed(0)}%**
 - Traffic file: \`${trafficFile}\`
-- Traffic snapshot: chrome ${(pct(browserTotals.chrome))}, firefox ${(pct(browserTotals.firefox))}, safari ${(pct(browserTotals.safari))}, edge ${(pct(browserTotals.edge))}
+- Traffic snapshot: chrome ${pct(browserTotals.chrome)}, firefox ${pct(browserTotals.firefox)}, safari ${pct(browserTotals.safari)}, edge ${pct(browserTotals.edge)}
+${parsed.issues?.length ? `\n**Traffic notes:**\n${parsed.issues.map(x => `- ${x}`).join("\n")}\n` : ""}
 `.trim();
     fs.writeFileSync(outPath, md + "\n", "utf8");
     console.log("No mapped features to gate. Exiting 0.");
@@ -145,6 +168,10 @@ ${tip}
 `.trim();
   }).join("\n\n");
 
+  const trafficNotes = parsed.issues?.length
+    ? `\n**Traffic notes:**\n${parsed.issues.map(x => `- ${x}`).join("\n")}\n`
+    : "";
+
   const md = `
 ### Baseline Readiness
 
@@ -156,7 +183,7 @@ ${ignored.length ? `Ignored (no version map): ${ignored.map(id => `\`${id}\``).j
 **Policy threshold:** ${(threshold * 100).toFixed(0)}%  
 **Traffic file:** \`${trafficFile}\`  
 **Traffic snapshot:** chrome ${pct(browserTotals.chrome)}, firefox ${pct(browserTotals.firefox)}, safari ${pct(browserTotals.safari)}, edge ${pct(browserTotals.edge)}
-
+${trafficNotes}
 ${summary}
 
 | Feature | Readiness | Threshold | Pass | Top blocker |
